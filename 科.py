@@ -4,6 +4,7 @@
 学习规划助手（熵权法）
 完整版 v5.0 - 支持中英文分号/冒号分隔时间段，兼容中文输入
 v5.1 - 向量化优化运算过程，消除Python循环，降低常数因子
+v5.2 - 修复预览/结果DataFrame中Index与Series混用导致的错位bug
 """
 
 import numpy as np
@@ -115,12 +116,13 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks, auto_weig
     else:
         allocated = (scores / total_score) * total_minutes
     print("\n===== 当前时间分配预览 =====")
+    # 修复：用 .values/.tolist() 确保按位置赋值，避免 Index 与 Series 混用导致错位
     preview = pd.DataFrame({
-        '任务': all_tasks.index,
-        '重要度': all_tasks['重要度'],
-        '紧急度': all_tasks['紧急度'],
-        '综合得分': scores,
-        '建议时间(分钟)': allocated
+        '任务': all_tasks.index.tolist(),
+        '重要度': all_tasks['重要度'].values,
+        '紧急度': all_tasks['紧急度'].values,
+        '综合得分': scores.values,
+        '建议时间(分钟)': allocated.values
     })
     print(preview.to_string(index=False))
     return w
@@ -460,12 +462,13 @@ def main():
                     allocated = pd.Series(total_min/len(scores), index=scores.index)
                 else:
                     allocated = (scores/scores.sum())*total_min
+                # 修复：用 .values/.tolist() 确保按位置赋值
                 result = pd.DataFrame({
-                    '任务名称': all_tasks_final.index,
-                    '重要度': all_tasks_final['重要度'],
-                    '紧急度': all_tasks_final['紧急度'],
-                    '综合得分': scores,
-                    '建议时间(分钟)': allocated
+                    '任务名称': all_tasks_final.index.tolist(),
+                    '重要度': all_tasks_final['重要度'].values,
+                    '紧急度': all_tasks_final['紧急度'].values,
+                    '综合得分': scores.values,
+                    '建议时间(分钟)': allocated.values
                 })
             else:
                 result = pd.DataFrame()
@@ -646,12 +649,13 @@ def main():
         allocated_final = pd.Series(total_min / len(scores_final), index=scores_final.index)
     else:
         allocated_final = (scores_final / scores_final.sum()) * total_min
+    # 修复：用 .values/.tolist() 确保按位置赋值
     result = pd.DataFrame({
-        '任务名称': all_tasks_final.index,
-        '重要度': all_tasks_final['重要度'],
-        '紧急度': all_tasks_final['紧急度'],
-        '综合得分': scores_final,
-        '建议时间(分钟)': allocated_final
+        '任务名称': all_tasks_final.index.tolist(),
+        '重要度': all_tasks_final['重要度'].values,
+        '紧急度': all_tasks_final['紧急度'].values,
+        '综合得分': scores_final.values,
+        '建议时间(分钟)': allocated_final.values
     })
     weights_results["自主安排模型"] = auto_weights
 
