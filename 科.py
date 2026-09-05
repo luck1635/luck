@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.15 - 修复母任务缩进误判（兼容None/NaN/nan等空值）
+v6.16 - 分级显示改为所有母任务在前、所有子任务在后
 """
 
 import numpy as np
@@ -189,10 +189,10 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
     result_df = pd.DataFrame(all_results)
     return result_df
 
-# -------------------------- 分级重排函数（清理空格）-------------------------
+# -------------------------- 分级重排函数（母任务在前，子任务在后）-------------------------
 def reorder_by_subject(df):
     """
-    将分配结果按学科分组，母任务在前，子任务缩进（子任务按综合得分降序）
+    所有母任务在前（按综合得分降序），所有子任务在后（按综合得分降序）
     返回重排后的 DataFrame
     """
     if df.empty:
@@ -209,20 +209,14 @@ def reorder_by_subject(df):
     parents = df[df['所属学科_clean'].isna() | df['所属学科_clean'].isin(_null_set)].copy()
     children = df[df['所属学科_clean'].notna() & ~df['所属学科_clean'].isin(_null_set)].copy()
     ordered_rows = []
-    # 母任务按综合得分降序排列
+    # 所有母任务在前，按综合得分降序
     parents_sorted = parents.sort_values('综合得分', ascending=False)
     for _, parent in parents_sorted.iterrows():
         ordered_rows.append(parent)
-        # 获取该母任务的所有子任务
-        child_rows = children[children['所属学科_clean'] == parent['任务名称_clean']]
-        child_rows = child_rows.sort_values('综合得分', ascending=False)
-        for _, child in child_rows.iterrows():
-            ordered_rows.append(child)
-    # 如果还有子任务找不到母任务（理论上不会），放在最后
-    remaining_children = children[~children['所属学科_clean'].isin(parents['任务名称_clean'].tolist())]
-    if not remaining_children.empty:
-        for _, child in remaining_children.iterrows():
-            ordered_rows.append(child)
+    # 所有子任务在后，按综合得分降序
+    children_sorted = children.sort_values('综合得分', ascending=False)
+    for _, child in children_sorted.iterrows():
+        ordered_rows.append(child)
     result = pd.DataFrame(ordered_rows)
     # 删除辅助列
     result = result.drop(columns=['任务名称_clean', '所属学科_clean'], errors='ignore')
