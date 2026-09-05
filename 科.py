@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.17 - 分级显示：每个母任务后跟其子任务（交错模式）
+v6.18 - 用显式层级字段判断母子任务，修复子任务缩进失效
 """
 
 import numpy as np
@@ -87,7 +87,7 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
     两步分配：
     1. 学科任务先分配总时间（仅学科）
     2. 每个学科内部，母任务与子任务再分配该学科总时间
-    返回分配结果的DataFrame（包含所有任务）
+    返回分配结果的DataFrame（包含所有任务，含'层级'字段：0=母任务，1=子任务）
     """
     # 清理 subject_data 索引
     subject_data_clean = subject_data.copy()
@@ -163,7 +163,8 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
                 '紧急度': inner_df.loc[sub, '紧急度'],
                 '综合得分': parent_score,
                 '建议时间(分钟)': parent_time,
-                '所属学科': None
+                '所属学科': None,
+                '层级': 0
             })
         else:
             # 有子任务，内部重新分配时间并计算得分
@@ -177,13 +178,15 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
             else:
                 inner_alloc = (inner_scores / inner_scores.sum()) * parent_time
             for task_name, time_val in inner_alloc.items():
+                is_parent = (task_name == sub)
                 all_results.append({
                     '任务名称': task_name,
                     '重要度': inner_df.loc[task_name, '重要度'],
                     '紧急度': inner_df.loc[task_name, '紧急度'],
                     '综合得分': inner_scores[task_name] if task_name in inner_scores else 0,
                     '建议时间(分钟)': time_val,
-                    '所属学科': sub if task_name != sub else None
+                    '所属学科': sub if not is_parent else None,
+                    '层级': 0 if is_parent else 1
                 })
 
     result_df = pd.DataFrame(all_results)
@@ -193,23 +196,32 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
 def reorder_by_subject(df):
     """
     每个母任务后跟其子任务（交错模式）：
-    - 母任务按综合得分降序
-    - 每个母任务下方紧跟其子任务（按综合得分降序）
+    - 母任务（层级=0）按综合得分降序
+    - 每个母任务下方紧跟其子任务（层级=1），按综合得分降序
     返回重排后的 DataFrame
     """
     if df.empty:
         return df
     df = df.copy()
-    # 清理可能的空格
+    # 用显式层级字段分离母子任务，避免所属学科空值判断歧义
+    if '层级' in df.columns:
+        parents = df[df['层级'] == 0].copy()
+        children = df[df['层级'] == 1].copy()
+    else:
+        # 兼容旧数据：用所属学科判断
+        df['所属学科_clean'] = df['所属学科'].astype(str).str.strip()
+        _null_set = {'None', 'nan', 'NaN', 'NaT', ''}
+        parents = df[df['所属学科_clean'].isna() | df['所属学科_clean'].isin(_null_set)].copy()
+        children = df[df['所属学科_clean'].notna() & ~df['所属学科_clean'].isin(_null_set)].copy()
+    # 清理任务名称空格用于匹配
     df['任务名称_clean'] = df['任务名称'].astype(str).str.strip()
     if '所属学科' in df.columns:
         df['所属学科_clean'] = df['所属学科'].astype(str).str.strip()
     else:
         df['所属学科_clean'] = None
-    # 分离母任务（所属学科为空/None/nan）和子任务
-    _null_set = {'None', 'nan', 'NaN', 'NaT', ''}
-    parents = df[df['所属学科_clean'].isna() | df['所属学科_clean'].isin(_null_set)].copy()
-    children = df[df['所属学科_clean'].notna() & ~df['所属学科_clean'].isin(_null_set)].copy()
+    parents['任务名称_clean'] = parents['任务名称'].astype(str).str.strip()
+    children['任务名称_clean'] = children['任务名称'].astype(str).str.strip()
+    children['所属学科_clean'] = children['所属学科'].astype(str).str.strip()
     ordered_rows = []
     # 母任务按综合得分降序，每个母任务后跟其子任务
     parents_sorted = parents.sort_values('综合得分', ascending=False)
@@ -240,12 +252,10 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks_list, auto
     result_ordered = reorder_by_subject(result)
     print("\n===== 当前时间分配预览 =====")
     preview = result_ordered.copy()
-    # 用 所属学科 字段判断是否子任务，兼容 None/NaN/'None'/'nan' 等空值
+    # 用显式层级字段判断，0=母任务不缩进，1=子任务4空格缩进
     def format_name(row):
-        subject = row.get('所属学科', None)
-        # 子任务：所属学科有实际值（非None/NaN/空/'None'/'nan'）
-        is_child = pd.notna(subject) and str(subject).strip() not in ('', 'None', 'nan', 'NaN', 'NaT')
-        if is_child:
+        level = row.get('层级', 0)
+        if level == 1:
             # 子任务：4个空格缩进
             return '    ' + str(row['任务名称'])
         else:
@@ -589,6 +599,9 @@ def save_data_excel(subject_stats, allocation_result, weights_dict, full_data=Tr
             ordered_result = reorder_by_subject(allocation_result)
         else:
             ordered_result = allocation_result
+        # 导出时移除内部辅助列
+        if '层级' in ordered_result.columns:
+            ordered_result = ordered_result.drop(columns=['层级'])
         ordered_result.to_excel(writer, sheet_name='时间分配建议', index=False)
         weight_df = pd.DataFrame({
             '模型': list(weights_dict.keys()),
@@ -907,17 +920,24 @@ def main():
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 df_raw.to_excel(writer, sheet_name='原始数据', index=False)
                 subject_stats.to_excel(writer, sheet_name='学科统计', index=False)
-                result_ordered.to_excel(writer, sheet_name='时间分配建议', index=False)
+                # 导出时移除内部辅助列
+                export_result = result_ordered.copy()
+                if '层级' in export_result.columns:
+                    export_result = export_result.drop(columns=['层级'])
+                export_result.to_excel(writer, sheet_name='时间分配建议', index=False)
                 pd.DataFrame({'模型': list(weights_results.keys()),
                               '权重详情': [str(w.to_dict()) for w in weights_results.values()]}).to_excel(writer, sheet_name='模型权重', index=False)
             print(f"\n✅ 详细结果已保存至: {output_path}")
         except Exception as e:
             print(f"保存详细结果失败: {e}")
 
-    # 保存到桌面（使用重排后的结果）
+    # 保存到桌面（使用重排后的结果，移除层级列）
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     desktop_file = os.path.join(desktop, "学习规划结果.xlsx")
-    result_ordered.to_excel(desktop_file, index=False)
+    export_desktop = result_ordered.copy()
+    if '层级' in export_desktop.columns:
+        export_desktop = export_desktop.drop(columns=['层级'])
+    export_desktop.to_excel(desktop_file, index=False)
     print(f"✅ 时间分配结果已保存到桌面：{desktop_file}")
 
     # 保存数据.xlsx（内部会重排）
