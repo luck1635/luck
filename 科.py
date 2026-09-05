@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.14 - 分级显示改用纯空格缩进，移除符号
+v6.15 - 修复母任务缩进误判（兼容None/NaN/nan等空值）
 """
 
 import numpy as np
@@ -204,9 +204,10 @@ def reorder_by_subject(df):
         df['所属学科_clean'] = df['所属学科'].astype(str).str.strip()
     else:
         df['所属学科_clean'] = None
-    # 分离母任务（所属学科为 None 或 'None' 或空）和子任务
-    parents = df[df['所属学科_clean'].isna() | (df['所属学科_clean'] == 'None') | (df['所属学科_clean'] == '')].copy()
-    children = df[df['所属学科_clean'].notna() & (df['所属学科_clean'] != 'None') & (df['所属学科_clean'] != '')].copy()
+    # 分离母任务（所属学科为空/None/nan）和子任务
+    _null_set = {'None', 'nan', 'NaN', 'NaT', ''}
+    parents = df[df['所属学科_clean'].isna() | df['所属学科_clean'].isin(_null_set)].copy()
+    children = df[df['所属学科_clean'].notna() & ~df['所属学科_clean'].isin(_null_set)].copy()
     ordered_rows = []
     # 母任务按综合得分降序排列
     parents_sorted = parents.sort_values('综合得分', ascending=False)
@@ -237,10 +238,12 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks_list, auto
     result_ordered = reorder_by_subject(result)
     print("\n===== 当前时间分配预览 =====")
     preview = result_ordered.copy()
-    # 用 所属学科 字段判断是否子任务，用纯空格缩进表示层级
+    # 用 所属学科 字段判断是否子任务，兼容 None/NaN/'None'/'nan' 等空值
     def format_name(row):
-        subject = str(row.get('所属学科', '')).strip()
-        if subject and subject != 'None':
+        subject = row.get('所属学科', None)
+        # 子任务：所属学科有实际值（非None/NaN/空/'None'/'nan'）
+        is_child = pd.notna(subject) and str(subject).strip() not in ('', 'None', 'nan', 'NaN', 'NaT')
+        if is_child:
             # 子任务：4个空格缩进
             return '    ' + str(row['任务名称'])
         else:
