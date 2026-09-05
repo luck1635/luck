@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.18 - 用显式层级字段判断母子任务，修复子任务缩进失效
+v6.19 - 删除/修改前显示自定义任务编号列表，避免编号错位
 """
 
 import numpy as np
@@ -214,11 +214,6 @@ def reorder_by_subject(df):
         parents = df[df['所属学科_clean'].isna() | df['所属学科_clean'].isin(_null_set)].copy()
         children = df[df['所属学科_clean'].notna() & ~df['所属学科_clean'].isin(_null_set)].copy()
     # 清理任务名称空格用于匹配
-    df['任务名称_clean'] = df['任务名称'].astype(str).str.strip()
-    if '所属学科' in df.columns:
-        df['所属学科_clean'] = df['所属学科'].astype(str).str.strip()
-    else:
-        df['所属学科_clean'] = None
     parents['任务名称_clean'] = parents['任务名称'].astype(str).str.strip()
     children['任务名称_clean'] = children['任务名称'].astype(str).str.strip()
     children['所属学科_clean'] = children['所属学科'].astype(str).str.strip()
@@ -265,6 +260,15 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks_list, auto
     display_cols = ['任务名称', '重要度', '紧急度', '综合得分', '建议时间(分钟)']
     print(preview[display_cols].to_string(index=False))
     return None
+
+def _print_custom_task_list(tasks):
+    """打印自定义任务编号列表，编号与 tasks 列表索引严格对应"""
+    if not tasks:
+        print("（暂无自主任务）")
+        return
+    print("\n当前自主任务列表（仅可操作自主任务，学科母任务不可操作）：")
+    for i, t in enumerate(tasks, 1):
+        print(f"  {i}. [{t['subject']}] {t['name']} | 重要度:{t['importance']:.1f} | 紧急度:{t['urgency']:.1f}")
 
 def manage_custom_tasks(subject_importance_dict, total_minutes, subject_data, existing_tasks=None, last_time_range=""):
     if existing_tasks is None:
@@ -331,12 +335,13 @@ def manage_custom_tasks(subject_importance_dict, total_minutes, subject_data, ex
             show_allocation_preview(total_minutes, subject_data, tasks, None)
         elif choice == '2':
             if not tasks:
-                print("暂无任务")
+                print("暂无自主任务")
                 continue
+            _print_custom_task_list(tasks)
             try:
-                idx = int(input("编号: ")) - 1
+                idx = int(input("\n请输入要修改的编号: ")) - 1
                 if idx < 0 or idx >= len(tasks):
-                    print("无效")
+                    print("无效编号")
                     continue
                 t = tasks[idx]
                 print(f"当前任务: [{t['subject']}] {t['name']} | 重要度:{t['importance']} | 紧急度:{t['urgency']}")
@@ -385,16 +390,17 @@ def manage_custom_tasks(subject_importance_dict, total_minutes, subject_data, ex
                 print(f"输入无效: {e}")
         elif choice == '3':
             if not tasks:
-                print("暂无任务")
+                print("暂无自主任务")
                 continue
+            _print_custom_task_list(tasks)
             try:
-                idx = int(input("编号: ")) - 1
+                idx = int(input("\n请输入要删除的编号: ")) - 1
                 if 0 <= idx < len(tasks):
                     removed = tasks.pop(idx)
-                    print(f"已删除 '{removed['name']}'")
+                    print(f"已删除 [{removed['subject']}] {removed['name']}")
                     show_allocation_preview(total_minutes, subject_data, tasks, None)
                 else:
-                    print("无效")
+                    print("无效编号")
             except ValueError:
                 print("输入无效")
         elif choice == '4':
