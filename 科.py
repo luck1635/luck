@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.13 - 优化分级显示（母任务▼/子任务└─），修复孤立子任务丢失
+v6.14 - 分级显示改用纯空格缩进，移除符号
 """
 
 import numpy as np
@@ -237,15 +237,15 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks_list, auto
     result_ordered = reorder_by_subject(result)
     print("\n===== 当前时间分配预览 =====")
     preview = result_ordered.copy()
-    # 用 所属学科 字段判断是否子任务，确保分级标记准确
+    # 用 所属学科 字段判断是否子任务，用纯空格缩进表示层级
     def format_name(row):
         subject = str(row.get('所属学科', '')).strip()
         if subject and subject != 'None':
-            # 子任务：缩进 + 连接符
-            return '  └─ ' + str(row['任务名称'])
+            # 子任务：4个空格缩进
+            return '    ' + str(row['任务名称'])
         else:
-            # 母任务：展开标记
-            return '▼ ' + str(row['任务名称'])
+            # 母任务：不缩进
+            return str(row['任务名称'])
     preview['任务名称'] = preview.apply(format_name, axis=1)
     display_cols = ['任务名称', '重要度', '紧急度', '综合得分', '建议时间(分钟)']
     print(preview[display_cols].to_string(index=False))
