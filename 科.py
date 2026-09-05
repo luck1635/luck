@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.12 - 修复分级显示匹配问题（彻底清理空格）
+v6.13 - 优化分级显示（母任务▼/子任务└─），修复孤立子任务丢失
 """
 
 import numpy as np
@@ -111,6 +111,16 @@ def allocate_time(total_minutes, subject_data, custom_tasks_list):
     if df_sub.empty:
         print("无学科任务，无法分配")
         return pd.DataFrame()
+
+    # ---- 修复：处理学科不在学科列表中的孤立子任务 ----
+    # 将这些子任务统一归入"其他"学科，并创建"其他"母任务
+    if not custom_df.empty:
+        known_subjects = set(df_sub.index)
+        orphan_mask = ~custom_df['subject'].isin(known_subjects)
+        if orphan_mask.any():
+            custom_df.loc[orphan_mask, 'subject'] = '其他'
+            if '其他' not in df_sub.index:
+                df_sub.loc['其他'] = {'重要度': 5.0, '紧急度': 5.0, 'type': 'subject'}
 
     # ---- 第一步：学科间分配 ----
     try:
@@ -227,12 +237,15 @@ def show_allocation_preview(total_minutes, subject_data, custom_tasks_list, auto
     result_ordered = reorder_by_subject(result)
     print("\n===== 当前时间分配预览 =====")
     preview = result_ordered.copy()
-    custom_names = [t['name'] for t in custom_tasks_list] if custom_tasks_list else []
+    # 用 所属学科 字段判断是否子任务，确保分级标记准确
     def format_name(row):
-        if row['任务名称'] in custom_names:
-            return '  ' + row['任务名称']
+        subject = str(row.get('所属学科', '')).strip()
+        if subject and subject != 'None':
+            # 子任务：缩进 + 连接符
+            return '  └─ ' + str(row['任务名称'])
         else:
-            return row['任务名称']
+            # 母任务：展开标记
+            return '▼ ' + str(row['任务名称'])
     preview['任务名称'] = preview.apply(format_name, axis=1)
     display_cols = ['任务名称', '重要度', '紧急度', '综合得分', '建议时间(分钟)']
     print(preview[display_cols].to_string(index=False))
