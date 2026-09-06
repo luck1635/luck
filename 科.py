@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 学习规划助手（熵权法）
-v6.19 - 删除/修改前显示自定义任务编号列表，避免编号错位
+v6.20 - 结果保存至桌面/结果/运行结果.xlsx
 """
 
 import numpy as np
@@ -937,14 +937,17 @@ def main():
         except Exception as e:
             print(f"保存详细结果失败: {e}")
 
-    # 保存到桌面（使用重排后的结果，移除层级列）
+    # ---------- 修改点：保存到桌面\结果\运行结果.xlsx ----------
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    desktop_file = os.path.join(desktop, "学习规划结果.xlsx")
+    result_folder = os.path.join(desktop, "结果")
+    os.makedirs(result_folder, exist_ok=True)                # 创建“结果”文件夹
+    result_file = os.path.join(result_folder, "运行结果.xlsx")  # 新文件名
+
     export_desktop = result_ordered.copy()
     if '层级' in export_desktop.columns:
         export_desktop = export_desktop.drop(columns=['层级'])
-    export_desktop.to_excel(desktop_file, index=False)
-    print(f"✅ 时间分配结果已保存到桌面：{desktop_file}")
+    export_desktop.to_excel(result_file, index=False)
+    print(f"✅ 时间分配结果已保存至：{result_file}")
 
     # 保存数据.xlsx（内部会重排）
     subject_stats_for_excel = subject_stats if 'subject_stats' in locals() else None
